@@ -1,0 +1,309 @@
+#!/bin/sh
+####################################################################################################################################################################################
+#Author: Tomas Mojzis (xmojzi08)
+#Date: 26.03.2018
+#Purpose: Project for IOS
+#Name: "wedi" editor wrapper
+####################################################################################################################################################################################
+if ! command -v realpath 1>/dev/null #zisti ci je realpath
+	then
+		(>&2 echo "Utility realpath is unavailable.")
+		exit 1
+fi
+#ak argument nie je, bude nim aktualny priecinok, a ak aj je ulozi sa do premennej wdir, alebo prislusny parameter
+if [ ! "$1" ]
+	then #nie je zadany ziadny parameter
+		wdir=$(realpath .)
+	else #je zadany nejaky prvy parameter -m -l -a -b
+		if [ "$1" = "-m" ]
+			then
+				param=m
+		elif [ "$1" = "-l" ]
+			then
+				param=l
+		elif [ "$1" = "-a" ]
+			then
+				param=a
+		elif [ "$1" = "-b" ]
+			then
+				param=b
+			else
+				if ! wdir=$(realpath "$1"  2>/dev/null) #skontroluje ci prvy parameter je platny adresar, ak je spravny ulozi sa do wdir
+					then
+						(>&2 echo "\"$1\" is not a valid directory (or you do not have privileges to enter it), parameter or a file in this directory.")
+						exit 1
+					else
+						if [ ! "$wdir" ] #ak je zadany zly parameter (z nejakeho dovodu realpath vrati 0)
+							then
+								(>&2 echo "Invalid parameter.")
+								exit 1
+						fi
+						if [ "$2" ] # ak je zadany nejaky parameter navyse
+							then
+								(>&2 echo "Unexpected number of parameters ("$#").")
+								exit 1
+						fi
+				fi						
+		fi
+fi
+#bol zadany parameter l alebo m, zistujem ci bol zadany spravny adresar
+if [ "$param" = "m" ] || [ "$param" = "l" ]
+	then
+		if [ "$3" ] # ak je zadany nejaky parameter navyse
+			then
+				(>&2 echo "Unexpected number of parameters ("$#").")
+				exit 1
+		fi
+		if [ "$2" ]
+			then
+				if ! wdir=$(realpath "$2" 2>/dev/null) #skontroluje ci druhy parameter je platny adresar, ak je spravny ulozi sa do wdir
+					then
+						(>&2 echo "\"$2\" is not a valid directory.")
+						exit 1
+				fi
+			else
+				wdir=$(realpath .)
+		fi
+fi
+#bol zadany parameter a alebo b, zistujem ci je DATE spravne zadany a ci je spravny adresar
+if [ "$param" = "a" ] || [ "$param" = "b" ]
+	then
+		if [ "$4" ] # ak je zadany nejaky parameter navyse
+			then
+				(>&2 echo "Unexpected number of parameters ("$#").")
+				exit 1
+		fi
+		if [ "$2" ] #ak je zadany 2 parameter
+			then
+				if ! rdate=$(date -d "$2" +%s 2>/dev/null) #do rdate ulozi datum v tvare sekund ak je spravne zadany
+					then
+						(>&2 echo "Date \"$2\" is not correct (YYYY-MM-DD).")
+						exit 1
+				fi
+				if [ "$3" ] #ak je zadany 3 parameter
+					then
+						if ! wdir=$(realpath "$3" 2>/dev/null) #skontroluje ci treti parameter je platny adresar, ak je spravny ulozi sa do wdir
+							then
+								(>&2 echo "\"$3\" is not a valid directory.")
+								exit 1
+						fi
+					else #ak nie je zadany 3 parameter, bude nim `pwd`
+						wdir=$(realpath .)
+				fi
+			else 
+				(>&2 echo "Enter a date (YYYY-MM-DD).")
+				exit 1
+		fi
+fi
+####################################################################################################################################################################################
+#ak nie je exportovana WEDI_RC ukonci sa program chybovo
+if [ ! "$WEDI_RC" ]
+	then
+		(>&2 echo "WEDI_RC path not defined.")
+		exit 1
+	else
+		#zisti, ci WEDI_RC existuje alebo nie
+		if [ ! -f "$WEDI_RC" ]
+			then
+				#echo WEDI_RC neexistuje
+				mkdir -p "$(dirname "$WEDI_RC")" #vytvor priecinky
+				if ! touch "$WEDI_RC" 2>/dev/null #vytvor subor
+				#ak sa nepodarilo vytvorit WEDI_RC subor, vypise chybu a zavrie sa
+					then
+						(>&2 echo "Could not create \"$WEDI_RC\" file.")
+						exit 1
+				fi
+		fi
+fi
+#skuska ci sa da zapisovat do suboru
+if ! test -w "$WEDI_RC"
+	then #ak sa neda zapisovat
+		(>&2 echo "Could not write into \"$WEDI_RC\" file.")
+		exit 1
+fi
+#skuska ci sa da citat z WEDI_RC			
+if ! test -r "$WEDI_RC"
+	then #ak sa neda zapisovat
+		(>&2 echo "Could not read from \"$WEDI_RC\" file.")
+		exit 1
+fi
+ #kontrola suborov vo WEDI_RC, ci este existuju, ak nie, riadky budu zmazane
+while read -r line; do
+	line=$(echo "$line" | cut -d " " -f 2-)
+	if [ ! -f "$line" ]
+		then
+			line=$(echo "$line" | sed 's/\//\\\//g') #vy-escapuje vsetky / v ceste
+			2>/dev/null 1>&2 sed -i "/$line/d" "$WEDI_RC" #vymaze vsetky riadny kde je zla cesta
+	fi
+done < "$WEDI_RC"
+####################################################################################################################################################################################
+####################################################################################################################################################################################
+#ak je wdir SUBOR,ulozi sa cas a cesta, otvori sa
+if [ -f "$wdir" ] 
+	then
+		if ! test -w "$wdir"
+			then #ak sa neda zapisovat
+				(>&2 echo "File :\"$wdir\" is not writeable.")
+		fi
+		#skuska ci sa da citat z daneho suboru			
+		if ! test -r "$wdir"
+			then #ak sa neda zapisovat
+				(>&2 echo "File :\"$wdir\" is not readable.")
+		fi
+		#Otvaranie pomocou premennych EDITOR alebo VISUAL alebo vi
+		if ! $EDITOR "$wdir" 2>/dev/null
+					then
+						#(>&2 echo "There is no/wrong editor in variables EDITOR(=\"$EDITOR\"), trying to open it with VISUAL(=\"$VISUAL\").")
+						if ! $VISUAL "$wdir" 2>/dev/null
+							then
+								#(>&2 echo "There is no/wrong editor in variables EDITOR(=\"$EDITOR\") and VISUAL(=\"$VISUAL\"), trying to open it with editor \"vi\".")
+							    if ! vi "$wdir" 2>/dev/null
+							    	then
+							    		#(>&2 echo "There is no/wrong editor in variables EDITOR(=\"$EDITOR\") and VISUAL(=\"$VISUAL\") and \"vi\" is unavailable too.")
+							    		exit 1
+							    fi
+						fi
+		fi
+		echo "$(date +%s)" "$wdir">>"$WEDI_RC" #po uspesnom otvoreni, zapis dat
+	else 
+		notafile=1
+fi
+####################################################################################################################################################################################
+####################################################################################################################################################################################
+#ak je wdir priecinok
+if [ -d "$wdir" ]
+	then
+		if [ $param ]
+			then
+				########################################################################################################################	
+				if [ "$param" = "l" ]
+					then #vypise nazvy suborov s ktorymi wedi pracoval v danom priecinku $wdir
+						if [ "$(find "$wdir" -maxdepth 1 -type f | wc -l)" -eq 0 ] #test ci je v priecinku nejaky subor
+							then
+								(>&2 echo "There is no file in this directory opened with wedi yet.")
+								exit 1
+							else #vypise vsetky pozadovane subory
+								grep -F "$(find "$wdir" -maxdepth 1 -type f)" "$WEDI_RC" | rev | cut -d "/" -f 1 | rev | sort | uniq 
+						fi
+				#########################################################################################################################
+				elif [ "$param" = "m" ]
+					then #otvori najcastejsie editovany subor v adresari
+						if [ "$(find "$wdir" -maxdepth 1 -type f | wc -l)" -eq 0 ] #test ci je v priecinku nejaky subor
+							then
+								(>&2 echo "There is no file in this directory opened with wedi yet.")
+								exit 1
+							else 
+								#do mef sa ulozi najcastejsie editovany subor
+								mef=$(grep -F "$(find "$wdir" -maxdepth 1 -type f)" "$WEDI_RC"  | cut -d " " -f 2- | sort | uniq -c | sort -gr | head -n1 | sed 's/^ *//' | cut -d " " -f 2- )
+						fi
+						if [ -f "$mef" ] 
+							then
+								if ! test -w "$mef"
+									then #ak sa neda zapisovat
+										(>&2 echo "File :\"$mef\" is not writeable.")
+								fi
+								#skuska ci sa da citat z daneho suboru			
+								if ! test -r "$mef"
+									then #ak sa neda zapisovat
+										(>&2 echo "File :\"$mef\" is not readable.")
+								fi
+								#Otvaranie pomocou premennych EDITOR alebo VISUAL alebo vi
+								if ! $EDITOR "$mef" 2>/dev/null
+											then
+												#(>&2 echo "There is no/wrong editor in variables EDITOR(=\"$EDITOR\"), trying to open it with VISUAL(=\"$VISUAL\").")
+												if ! $VISUAL "$mef" 2>/dev/null
+													then
+														#(>&2 echo "There is no/wrong editor in variables EDITOR(=\"$EDITOR\") and VISUAL(=\"$VISUAL\"), trying to open it with editor \"vi\".")
+													    if ! vi "$mef" 2>/dev/null
+													    	then
+													    		#(>&2 echo "There is no/wrong editor in variables EDITOR(=\"$EDITOR\") and VISUAL(=\"$VISUAL\") and \"vi\" is unavailable too.")
+													    		exit 1
+													    fi
+												fi
+								fi
+								echo "$(date +%s)" "$mef">>"$WEDI_RC" #po uspesnom otvoreni, zapis dat
+						fi
+				########################################################################################################################
+				#param A
+				elif [ "$param" = "a" ]
+					then
+						if [ "$(find "$wdir" -maxdepth 1 -type f | wc -l)" -eq 0 ] #zisti kolko je suborov v danom priecinku, ak 0 chyba
+							then
+								(>&2 echo "There is no file in this directory opened with wedi yet.")
+								exit 1
+							else # grep ktory spocita kolko riadkov sa vypisalo, ak 0 tak v danom datume nebolo editovane nic
+								if [ "$(grep -F "$(find "$wdir" -maxdepth 1 -type f)" "$WEDI_RC" | sort -nrk 1,1 | sort -u -k 2,2 | awk -v rdate="$rdate" '$1 >= rdate' | rev | cut -d "/" -f 1 | rev | sort | uniq | wc -l )" -eq 0 ]
+									then
+										(>&2 echo "There is no file in this directory opened with wedi after date \"$2\".")
+										exit 1
+									else # az tu to vypise
+										grep -F "$(find "$wdir" -maxdepth 1 -type f)" "$WEDI_RC" | sort -nrk 1,1 | sort -u -k 2,2 | awk -v rdate="$rdate" '$1 >= rdate' | rev | cut -d "/" -f 1 | rev | sort | uniq
+								fi
+						fi
+				########################################################################################################################
+				#param B
+					else	
+						if [ "$(find "$wdir" -maxdepth 1 -type f | wc -l)" -eq 0 ] #zisti kolko je suborov v danom priecinku, ak 0 chyba
+							then
+								(>&2 echo "There is no file in this directory opened with wedi yet.")
+								exit 1
+							else # grep ktory spocita kolko riadkov sa vypisalo, ak 0 tak v danom datume nebolo editovane nic
+								if [ "$(grep -F "$(find "$wdir" -maxdepth 1 -type f)" "$WEDI_RC" | sort -nrk 1,1 | sort -u -k 2,2 | awk -v rdate="$rdate" '$1 <= rdate' | rev | cut -d "/" -f 1 | rev | sort | uniq | wc -l)" -eq 0 ]
+									then 
+										(>&2 echo "There is no file in this directory opened with wedi before date \"$2\".")
+										exit 1
+									else #az tu to vypise
+										grep -F "$(find "$wdir" -maxdepth 1 -type f)" "$WEDI_RC" | sort -nrk 1,1 | sort -u -k 2,2 | awk -v rdate="$rdate" '$1 <= rdate' | rev | cut -d "/" -f 1 | rev | sort | uniq 
+								fi
+						fi
+				fi
+				##########################################################################################################################
+			else
+				#je zadany adresar BEZ do $lef sa ulozi POSLEDNE editovany subor v danom adresari
+				if [ "$(find "$wdir" -maxdepth 1 -type f | wc -l)" -eq 0 ]  #zisti kolko je suborov v danom priecinku, ak 0 chyba
+					then
+						(>&2 echo "There is no file in this directory opened with wedi yet.")
+						exit 1
+					else # do lef ulozi posledne editovany subor v priecinku
+						lef=$(grep -F "$(find "$wdir" -maxdepth 1 -type f)" "$WEDI_RC" | sort -gr | cut -d " " -f 2- | head -n1)
+				fi
+				if [ ! "$lef" ]
+					then
+						(>&2 echo "There is no file in this directory opened with wedi yet.")
+						exit 1
+				fi
+				if [ -f "$lef" ]
+					then
+						if ! test -w "$lef"
+							then #ak sa neda zapisovat
+								(>&2 echo "File :\"$lef\" is not writeable.")
+						fi
+						#skuska ci sa da citat z daneho suboru			
+						if ! test -r "$lef"
+							then #ak sa neda zapisovat
+								(>&2 echo "File :\"$lef\" is not readable.")
+						fi
+						if ! $EDITOR "$lef" 2>/dev/null
+									then
+										#(>&2 echo "There is no/wrong editor in variables EDITOR(=\"$EDITOR\"), trying to open it with VISUAL(=\"$VISUAL\").")
+										if ! $VISUAL "$lef" 2>/dev/null
+											then
+												#(>&2 echo "There is no/wrong editor in variables EDITOR(=\"$EDITOR\") and VISUAL(=\"$VISUAL\"), trying to open it with editor \"vi\".")
+											    if ! vi "$lef" 2>/dev/null
+											    	then
+											    		#(>&2 echo "There is no/wrong editor in variables EDITOR(=\"$EDITOR\") and VISUAL(=\"$VISUAL\") and \"vi\" is unavailable too.")
+											    		exit 1
+											    fi
+										fi
+						fi
+						echo "$(date +%s)" "$lef">>"$WEDI_RC" #po uspesnom otvoreni, zapis dat
+				fi
+		fi
+	else
+		notadir=1
+fi
+if [ "$notafile" = "1" ] && [ "$notadir" = "1" ] # na merline realpath fungoval inak, bolo to treba osetrit, realpath "nejaky subor/adresar" ktory neexistuje nevratil chybu
+	then
+		(>&2 echo "\"$wdir\" is not a file or a directory.")
+		exit 1
+fi
